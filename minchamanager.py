@@ -34,7 +34,7 @@ class MinchaManager:
         
     # deal with weirdly formatted texts *ahem* vzwpix *ahem*
     def validify_content(self,content):
-        valid_list = ['q','s','y','i','f','a','0','1','2','3','4','5','6','7','8','9','*']
+        valid_list = ['q','s','y','i','f','a','r','0','1','2','3','4','5','6','7','8','9','*']
         c = []
         for line in content.splitlines():
             if len(line) > 0 and line[0] in valid_list:
@@ -66,7 +66,7 @@ class MinchaManager:
         elif content[0] == 'y' and (self.state == State.WAITING or self.state == CONFIRMED): #positive mincha response
             self.respondents += 1
             self.log.INFO("Received:",content[0]," # respondents:",self.respondents)
-        elif content[0] == 'c' and (self.state == State.WAITING or self.state == CONFIRMED): #rescind positive mincha response
+        elif content[0] == 'r' and (self.state == State.WAITING or self.state == CONFIRMED): #rescind positive mincha response
             self.respondents -= 1
             self.log.INFO("Received:",content[0]," # respondents:",self.respondents)	
         elif content[0] == 'a' and len(content) > 1: # add contact
