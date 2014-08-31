@@ -32,11 +32,21 @@ class MinchaManager:
         self.log = log
         self.log.INFO("Starting Manager: Current schedule is ",self.schedule)
         
+    # deal with weirdly formatted texts *ahem* vzwpix *ahem*
+    def validify_content(self,content):
+        valid_list = ['q','s','y','i','f','a','0','1','2','3','4','5','6','7','8','9','*']
+        c = []
+        for line in content.splitlines():
+            if len(line) > 0 and line[0] in valid_list:
+                c.append(line)
+        return '\n'.join(c)
+    
     def processMsg(self,msg):
         address = msg[0]
         subject = msg[1]
         content = msg[2]
-
+        content = self.validify_content(content)
+        
         if len(content) == 0:
             return
         if len(content) > 4 and content[:4]=="PASSWORD": 
