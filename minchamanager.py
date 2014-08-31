@@ -1,5 +1,7 @@
 from datetime import datetime
 from log import Log
+import re
+from base64 import b64decode
 
 
 class State:
@@ -36,15 +38,27 @@ class MinchaManager:
     def validify_content(self,content):
         valid_list = ['q','s','y','i','f','a','r','0','1','2','3','4','5','6','7','8','9','*']
         c = []
+        b64 = False
         for line in content.splitlines():
+            if line.find("base64") > -1: b64 = True
+            if b64 == True:
+                try:
+                    line = b64decode(line)
+                except TypeError:
+                    continue
+            line = self.remove_html(line)
             if len(line) > 0 and line[0] in valid_list:
                 c.append(line)
         return '\n'.join(c)
-    
+    def remove_html(self,raw_html):
+        cleanr =re.compile('<.*?>')
+        cleantext = re.sub(cleanr,'', raw_html)
+        return cleantext
     def processMsg(self,msg):
         address = msg[0]
         subject = msg[1]
         content = msg[2]
+        content = self.remove_html(content)
         content = self.validify_content(content)
         
         if len(content) == 0:
@@ -183,9 +197,9 @@ class MinchaManager:
             msg = msg.replace("%t",str(e_min))
             self.mailclient.sendMail("Confirmed "+str(e_min),msg,to="ALL")
         
-         elif self.state == State.CONFIRMED and \
-             self.respondents < State.MIN_CONFIRMED and \
-             dt > 0: # TODO should it be >= 0, or would that be too close?
+        elif self.state == State.CONFIRMED and \
+              self.respondents < State.MIN_CONFIRMED and \
+              dt > 0: # TODO should it be >= 0, or would that be too close?
             self.state = State.WAITING
             self.confirmed_time = None
             msg = "Mincha for %t unconfirmed (We now have only %n people)"
