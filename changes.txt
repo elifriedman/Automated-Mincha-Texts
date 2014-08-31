@@ -1,0 +1,4 @@
+CHANGE LOG
+==========
+1)Added ability to send positive response even if we already have minyan confirmed (minchamanager.py, line 53,56)
+2)Added ability to cancel positive response  (minchamanager.py, line 59-61, 176-184)

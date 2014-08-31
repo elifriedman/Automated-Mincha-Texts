@@ -50,12 +50,15 @@ class MinchaManager:
         elif content[0] == 's' and password: # set schedule
             self.addSchedule(content[1:])
             self.log.INFO("Received: s")
-        elif '0' <= content[0] and content[0] <= '9' and self.state == State.WAITING: # mincha response
+        elif '0' <= content[0] and content[0] <= '9' and (self.state == State.WAITING or self.state == CONFIRMED): # positive mincha response
             self.respondents += int(content[0])
             self.log.INFO("Received:",content[0]," # respondents:",self.respondents)
-        elif content[0] == 'y' and self.state == State.WAITING: # mincha response
+        elif content[0] == 'y' and (self.state == State.WAITING or self.state == CONFIRMED): #positive mincha response
             self.respondents += 1
             self.log.INFO("Received:",content[0]," # respondents:",self.respondents)
+		 elif content[0] == 'c' and (self.state == State.WAITING or self.state == CONFIRMED): #rescind positive mincha response
+            self.respondents -= 1
+            self.log.INFO("Received:",content[0]," # respondents:",self.respondents)	
         elif content[0] == 'a' and len(content) > 1: # add contact
             self.mailclient.addContact(address,content[1:])
             self.log.INFO("Received:",content[0])
@@ -169,7 +172,17 @@ class MinchaManager:
             msg = "Mincha confirmed for %t"
             msg = msg.replace("%t",str(e_min))
             self.mailclient.sendMail("Confirmed "+str(e_min),msg,to="ALL")
-            
+			
+         elif self.state == State.CONFIRMED and \
+             self.respondents < State.MIN_CONFIRMED and \
+             dt > 0: # TODO should it be >= 0, or would that be too close?
+            self.state = State.WAITING
+            self.confirmed_time = None
+            msg = "Mincha for %t unconfirmed (We now have only %n people)"
+            msg = msg.replace("%t",str(e_min))
+			msg = msg.replace("%n",self.respondents)
+            self.mailclient.sendMail("Unconfirmed "+str(e_min),msg,to="ALL")
+		
         elif self.state == State.WAITING and dt <= 0:
             self.state = State.FREE
             msg = "Not enough for %t."
