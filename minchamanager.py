@@ -44,53 +44,67 @@ class MinchaManager:
             content = content[4:]
         else: password = False
         
-        if content[0] == 'q':
+        if content[0] == 'q' and password: # quit
             self.loop = False
             self.log.INFO("Received: q")
-        elif content[0] == 's' and password:
+        elif content[0] == 's' and password: # set schedule
             self.addSchedule(content[1:])
             self.log.INFO("Received: s")
-        elif '0' <= content[0] and content[0] <= '9' and self.state == State.WAITING:
+        elif '0' <= content[0] and content[0] <= '9' and self.state == State.WAITING: # mincha response
             self.respondents += int(content[0])
             self.log.INFO("Received:",content[0]," # respondents:",self.respondents)
-        elif content[0] == 'y' and self.state == State.WAITING:
+        elif content[0] == 'y' and self.state == State.WAITING: # mincha response
             self.respondents += 1
             self.log.INFO("Received:",content[0]," # respondents:",self.respondents)
-        elif content[0] == 'a' and len(content) > 1:
+        elif content[0] == 'a' and len(content) > 1: # add contact
             self.mailclient.addContact(address,content[1:])
             self.log.INFO("Received:",content[0])
-        elif content[0] == 'i':
+        elif content[0] == 'i': # info
             if len(content) > 1 and content[1] == 's' and password:
+                self.log.INFO("Received:",content[0],content[1])
                 # TODO user sets the state
                 return
+            self.log.INFO("Received:",content[0])
             msg = "Next Event: "
             if self.next == None: msg = msg + "Nothing scheduled right now."
             else: msg = msg + str(self.next)
             msg = msg + "\n# Respondents: " + str(self.respondents) + \
                         "\nState: " + State.get_str(self.state)
             self.mailclient.sendMail("MinchaServer Status",msg,to=address)
+        elif content[0] == 'f': # forward message to me
+            self.mailclient.sendMail("FWD: " + address,\
+                        "SUBJECT: " + subject + "\n"+content[1:],to="ME")
+            
+        else:
+            self.mailclient.sendMail("Invalid Response","Your repsonse is invalid. Please check your formatting or github.com/Krittian/Automated-Mincha-Texts",to=address)
             
             
     def addSchedule(self,sched="from file"):
         # format for schedule is as a newline separated list with the following cronlike time format
-        # m h d M Y
+        # m h d M Y wait_limit "msg"
         # where
         # m is minutes: 0 - 59
         # h is hours: 0 - 23
         # d is days of the month: 1 - 31
         # M is months: 1 - 12
         # Y is year
+        # wait_limit is the number of minutes before an event to send out a message [optional]
+        # msg is the message to send [optional]
         # each column can hold a number in the range, a list of comma separated numbers,
         # or two numbers separated by a hyphen
         if sched == "from file":
             file = open("schedule",mode='r')
             lines = file.readlines()
             file.close()
+            append = False
         else: 
             if sched[0] == 'a':
                 file = open("schedule",mode='a')
                 sched = sched[1:]
-            else: file = open("schedule",mode='w')
+                append = True
+            else: 
+                file = open("schedule",mode='w')
+                append = False
             file.write(sched)
             file.write('\n')
             file.close()
@@ -98,7 +112,15 @@ class MinchaManager:
         
         for line in lines:
             nline = []
-            for e in line.split():
+            l = line.find('"')
+            r = line.rfind('"')
+            msg = ""
+            if l != -1 and r != -1 and l != r:
+                msg = line[l:r+1]
+            line = line.replace(msg,"")
+            msg = msg[1:len(msg)-1] # get rid of "
+            split = line.split()
+            for e in split[0:5]:
                 nent = []
                 for z in e.split(','):
                     prt = z.partition('-')
@@ -108,9 +130,13 @@ class MinchaManager:
                     elif int(prt[2]) > int(prt[0]):
                         nent.extend(range(int(prt[0]),int(prt[2])+1))
                 nline.append(nent)
-            l = [Event(datetime(1,1,1,H,M,0),nline[2],nline[3],nline[4]) \
+            nline.append(msg)
+            if len(split) >= 6: nline.append(split[5]) # wait_time
+            else: nline.append("40")
+            l = [Event(datetime(1,1,1,H,M,0),*nline[2:5],msg=nline[5],wait_range=nline[6])\
                     for H in nline[1] for M in nline[0]]
-            self.schedule.extend(l)
+            if append == True: self.schedule.extend(l)
+            else: self.schedule = l
                 
     def checkSchedule(self):
         t = datetime.now()
@@ -124,7 +150,7 @@ class MinchaManager:
         self.next = e_min
         if e_min == None: return
         
-        if self.state == State.FREE and 0 < dt and dt <= State.WAIT_RANGE:
+        if self.state == State.FREE and 0 < dt and dt <= e_min.wait_range:
             self.state = State.WAITING
             self.respondents = 0
             msg = "Would you like Mincha at %t?"
@@ -150,13 +176,16 @@ class MinchaManager:
             msg = msg.replace("%t",str(e_min))
             self.mailclient.sendMail("Failure",msg,to="ALL")
         
-        elif self.state == State.CONFIRMED and \
-             (datetime.now()-self.confirmed_time).seconds/3600 >= State.DELAY_TO_FREE:
-                 self.state = State.FREE
+        elif self.state == State.CONFIRMED:
+            pass
+        
+        # quit, so we can restart tomorrow
+        if t.time() >= datetime(1,1,1,23,00).time():
+            self.loop = False
     
 
 class Event(object):
-    def __init__(self, evt_time,day,month,dow,msg=""):
+    def __init__(self, evt_time,day,month,dow,msg="",wait_range="40"):
         """
         desc: min hour day month dow
             day: 1 - num days
@@ -168,6 +197,9 @@ class Event(object):
         self.month = month
         self.dow = dow
         self.msg = msg
+        try:
+            self.wait_range = int(wait_range)
+        except ValueError: self.wait_range = 40
 
     def __repr__(self):
         return "Event("+str(self)+")"
